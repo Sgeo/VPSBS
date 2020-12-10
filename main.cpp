@@ -6,6 +6,7 @@
 
 static void (WINAPI * trueGlViewport)(GLint, GLint, GLsizei, GLsizei) = glViewport;
 static void (WINAPI * trueGlScissor)(GLint, GLint, GLsizei, GLsizei) = glScissor;
+static void (WINAPI * trueGlMatrixMode)(GLenum) = glMatrixMode;
 static void (WINAPI * trueGlDrawArrays)(GLenum mode, GLint first, GLsizei count) = glDrawArrays;
 static void (WINAPI * trueGlDrawElements)(GLenum mode, GLsizei count, GLenum type, const void * indices) = glDrawElements;
 
@@ -27,17 +28,28 @@ static Viewport currentViewport;
 
 static Scissor currentScissor;
 
+static GLenum currentMatrixMode;
+
 void leftSide(void) {
     trueGlViewport(currentViewport.x, currentViewport.y, currentViewport.width/2, currentViewport.height);
     trueGlScissor(currentScissor.x, currentScissor.y, currentScissor.width/2, currentScissor.height);
+    trueGlMatrixMode(GL_MODELVIEW_MATRIX);
+    glPushMatrix();
+    glTranslatef(-0.03, 0, 0);
 }
 
 void rightSide(void) {
+    glPopMatrix();
     trueGlViewport(currentViewport.x + currentViewport.width/2, currentViewport.y, currentViewport.width/2, currentViewport.height);
     trueGlScissor(currentScissor.x + currentScissor.width/2, currentScissor.y, currentScissor.width/2, currentScissor.height);
+    glPushMatrix();
+    glTranslatef(0.03, 0, 0);
 }
 
+
 void neutral(void) {
+    glPopMatrix();
+    trueGlMatrixMode(currentMatrixMode);
     trueGlViewport(currentViewport.x, currentViewport.y, currentViewport.width, currentViewport.height);
     trueGlScissor(currentScissor.x, currentScissor.y, currentScissor.width, currentScissor.height);
 }
@@ -57,6 +69,11 @@ void WINAPI hookedGlScissor(GLint x, GLint y, GLsizei width, GLsizei height) {
     currentScissor.width = width;
     currentScissor.height = height;
     trueGlScissor(x, y, width, height);
+}
+
+void WINAPI hookedGlMatrixMode(GLenum mode) {
+    currentMatrixMode = mode;
+    trueGlMatrixMode(mode);
 }
 
 void WINAPI hookedGlDrawArrays(GLenum mode, GLint first, GLsizei count) {
@@ -96,6 +113,7 @@ BOOL WINAPI DllMain(HINSTANCE hinst, DWORD dwReason, LPVOID reserved)
         DetourUpdateThread(GetCurrentThread());
         DetourAttach(&(PVOID&)trueGlViewport, hookedGlViewport);
         DetourAttach(&(PVOID&)trueGlScissor, hookedGlScissor);
+        DetourAttach(&(PVOID&)trueGlMatrixMode, hookedGlMatrixMode);
         DetourAttach(&(PVOID&)trueGlDrawArrays, hookedGlDrawArrays);
         DetourAttach(&(PVOID&)trueGlDrawElements, hookedGlDrawElements);
         error = DetourTransactionCommit();
@@ -114,6 +132,7 @@ BOOL WINAPI DllMain(HINSTANCE hinst, DWORD dwReason, LPVOID reserved)
         DetourUpdateThread(GetCurrentThread());
         DetourDetach(&(PVOID&)trueGlViewport, hookedGlViewport);
         DetourDetach(&(PVOID&)trueGlScissor, hookedGlScissor);
+        DetourDetach(&(PVOID&)trueGlMatrixMode, hookedGlMatrixMode);
         DetourDetach(&(PVOID&)trueGlDrawArrays, hookedGlDrawArrays);
         DetourDetach(&(PVOID&)trueGlDrawElements, hookedGlDrawElements);
         error = DetourTransactionCommit();
