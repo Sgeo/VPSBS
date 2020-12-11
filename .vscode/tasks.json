@@ -13,6 +13,8 @@
 				"${fileDirname}\\VPSBS.dll",
 				"vcpkg\\installed\\x64-windows\\lib\\detours.lib",
 				"opengl32.lib",
+				"vcpkg\\installed\\x64-windows\\lib\\glew32.lib",
+				"user32.lib",
 				"${file}",
 				"/I vcpkg\\installed\\x64-windows\\include\\detours",
 				"/link /MACHINE:X64 /export:DetourFinishHelperProcess,@1,NONAME"

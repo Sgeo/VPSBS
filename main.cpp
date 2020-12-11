@@ -1,96 +1,68 @@
 #include <stdio.h>
 #include <windows.h>
-#include <GL/gl.h>
+//#include <GL/gl.h>
 
 #include "vcpkg\\installed\\x64-windows\\include\\detours\\detours.h"
+#include "vcpkg\\installed\\x64-windows\\include\\gl\\glew.h"
 
-static void (WINAPI * trueGlViewport)(GLint, GLint, GLsizei, GLsizei) = glViewport;
-static void (WINAPI * trueGlScissor)(GLint, GLint, GLsizei, GLsizei) = glScissor;
-static void (WINAPI * trueGlMatrixMode)(GLenum) = glMatrixMode;
-static void (WINAPI * trueGlDrawArrays)(GLenum mode, GLint first, GLsizei count) = glDrawArrays;
-static void (WINAPI * trueGlDrawElements)(GLenum mode, GLsizei count, GLenum type, const void * indices) = glDrawElements;
 
-typedef struct Viewport {
-    GLint x;
-    GLint y;
-    GLsizei width;
-    GLsizei height;
-} Viewport;
+static GLuint (WINAPI * trueGlCreateProgram)(void) = NULL;
+static int (WINAPI * trueEntry)(VOID) = NULL;
+static GLenum (WINAPI * trueGlewInit)(VOID) = glewInit;
 
-typedef struct Scissor {
-    GLint x;
-    GLint y;
-    GLsizei width;
-    GLsizei height;
-} Scissor;
+const char* GEOMETRY_SHADER = R"glsl(
+    #version 330 core
+    layout(triangles) in;
+    layout(triangle_strip, max_vertices=6) out;
 
-static Viewport currentViewport;
+    void main() {
+        for(int i = 0; i < 3; i++) {
+            gl_Position = gl_in[i].gl_Position;
+            gl_Position.x = gl_Position.x * 0.5 - gl_Position.w * 0.5;
+            //gl_Position.x -= 0.06 * gl_Position.w;
+            EmitVertex();
+        }
+        EndPrimitive();
+        for(int i = 0; i < 3; i++) {
+            gl_Position = gl_in[i].gl_Position;
+            gl_Position.x = gl_Position.x * 0.5 + gl_Position.w * 0.5;
+            //gl_Position.x += 0.06 * gl_Position.w;
+            EmitVertex();
+        }
+        EndPrimitive();
+    }
 
-static Scissor currentScissor;
 
-static GLenum currentMatrixMode;
+)glsl";
 
-void leftSide(void) {
-    trueGlViewport(currentViewport.x, currentViewport.y, currentViewport.width/2, currentViewport.height);
-    trueGlScissor(currentScissor.x, currentScissor.y, currentScissor.width/2, currentScissor.height);
-    trueGlMatrixMode(GL_MODELVIEW_MATRIX);
-    glPushMatrix();
-    glTranslatef(-0.03, 0, 0);
+GLuint WINAPI hookedGlCreateProgram() {
+    //MessageBoxW(NULL, L"Hooked Link Program", L"Hook", 0);
+    GLuint result = trueGlCreateProgram();
+    GLuint shader = glCreateShader(GL_GEOMETRY_SHADER);
+    glShaderSource(shader, 1, &GEOMETRY_SHADER, NULL);
+    glCompileShader(shader);
+    glAttachShader(result, shader);
+    return result;
+    
 }
 
-void rightSide(void) {
-    glPopMatrix();
-    trueGlViewport(currentViewport.x + currentViewport.width/2, currentViewport.y, currentViewport.width/2, currentViewport.height);
-    trueGlScissor(currentScissor.x + currentScissor.width/2, currentScissor.y, currentScissor.width/2, currentScissor.height);
-    glPushMatrix();
-    glTranslatef(0.03, 0, 0);
+
+
+GLenum WINAPI hookedGlewInit(VOID) {
+    //MessageBoxW(NULL, L"Hooked entry", L"Hook", 0);
+    GLenum result = trueGlewInit();
+    
+    trueGlCreateProgram = (GLuint (WINAPI* )())wglGetProcAddress("glCreateProgram");
+    DetourTransactionBegin();
+    DetourUpdateThread(GetCurrentThread());
+    DetourAttach(&(PVOID&)trueGlCreateProgram, hookedGlCreateProgram);
+    DetourTransactionCommit();
+    return result;
 }
 
 
-void neutral(void) {
-    glPopMatrix();
-    trueGlMatrixMode(currentMatrixMode);
-    trueGlViewport(currentViewport.x, currentViewport.y, currentViewport.width, currentViewport.height);
-    trueGlScissor(currentScissor.x, currentScissor.y, currentScissor.width, currentScissor.height);
-}
 
-void WINAPI hookedGlViewport(GLint x, GLint y, GLsizei width, GLsizei height)
-{
-    currentViewport.x = x;
-    currentViewport.y = y;
-    currentViewport.width = width;
-    currentViewport.height = height;
-    trueGlViewport(x, y, width, height);
-}
 
-void WINAPI hookedGlScissor(GLint x, GLint y, GLsizei width, GLsizei height) {
-    currentScissor.x = x;
-    currentScissor.y = y;
-    currentScissor.width = width;
-    currentScissor.height = height;
-    trueGlScissor(x, y, width, height);
-}
-
-void WINAPI hookedGlMatrixMode(GLenum mode) {
-    currentMatrixMode = mode;
-    trueGlMatrixMode(mode);
-}
-
-void WINAPI hookedGlDrawArrays(GLenum mode, GLint first, GLsizei count) {
-    leftSide();
-    trueGlDrawArrays(mode, first, count);
-    rightSide();
-    trueGlDrawArrays(mode, first, count);
-    neutral();
-}
-
-void WINAPI hookedGlDrawElements(GLenum mode, GLsizei count, GLenum type, const void * indices) {
-    leftSide();
-    trueGlDrawElements(mode, count, type, indices);
-    rightSide();
-    trueGlDrawElements(mode, count, type, indices);
-    neutral();
-}
 
 BOOL WINAPI DllMain(HINSTANCE hinst, DWORD dwReason, LPVOID reserved)
 {
@@ -109,13 +81,11 @@ BOOL WINAPI DllMain(HINSTANCE hinst, DWORD dwReason, LPVOID reserved)
                " Starting.\n");
         fflush(stdout);
 
+        trueEntry = (int (WINAPI *)())DetourGetEntryPoint(NULL);
+
         DetourTransactionBegin();
         DetourUpdateThread(GetCurrentThread());
-        DetourAttach(&(PVOID&)trueGlViewport, hookedGlViewport);
-        DetourAttach(&(PVOID&)trueGlScissor, hookedGlScissor);
-        DetourAttach(&(PVOID&)trueGlMatrixMode, hookedGlMatrixMode);
-        DetourAttach(&(PVOID&)trueGlDrawArrays, hookedGlDrawArrays);
-        DetourAttach(&(PVOID&)trueGlDrawElements, hookedGlDrawElements);
+        DetourAttach(&(PVOID&)trueGlewInit, hookedGlewInit);
         error = DetourTransactionCommit();
 
         if (error == NO_ERROR) {
@@ -130,11 +100,7 @@ BOOL WINAPI DllMain(HINSTANCE hinst, DWORD dwReason, LPVOID reserved)
     else if (dwReason == DLL_PROCESS_DETACH) {
         DetourTransactionBegin();
         DetourUpdateThread(GetCurrentThread());
-        DetourDetach(&(PVOID&)trueGlViewport, hookedGlViewport);
-        DetourDetach(&(PVOID&)trueGlScissor, hookedGlScissor);
-        DetourDetach(&(PVOID&)trueGlMatrixMode, hookedGlMatrixMode);
-        DetourDetach(&(PVOID&)trueGlDrawArrays, hookedGlDrawArrays);
-        DetourDetach(&(PVOID&)trueGlDrawElements, hookedGlDrawElements);
+       // DetourDetach(&(PVOID&)trueGlLinkProgram, hookedGlLinkProgram);
         error = DetourTransactionCommit();
 
         printf("ogldet" DETOURS_STRINGIFY(DETOURS_BITS) ".dll:"
