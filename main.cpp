@@ -33,9 +33,10 @@ static GLenum currentMatrixMode;
 void leftSide(void) {
     trueGlViewport(currentViewport.x, currentViewport.y, currentViewport.width/2, currentViewport.height);
     trueGlScissor(currentScissor.x, currentScissor.y, currentScissor.width/2, currentScissor.height);
-    trueGlMatrixMode(GL_MODELVIEW_MATRIX);
+    trueGlMatrixMode(GL_PROJECTION); // The legacy matrix manipulation functions (e.g. glTranslatef and glMultMatrix) apply before the matrix on the stack
+                                     // Thus, to apply to the result of modelmatrix, we need to apply before the projection matrix.
     glPushMatrix();
-    glTranslatef(-0.03, 0, 0);
+    glTranslatef(0.03, 0, 0);
 }
 
 void rightSide(void) {
@@ -43,7 +44,7 @@ void rightSide(void) {
     trueGlViewport(currentViewport.x + currentViewport.width/2, currentViewport.y, currentViewport.width/2, currentViewport.height);
     trueGlScissor(currentScissor.x + currentScissor.width/2, currentScissor.y, currentScissor.width/2, currentScissor.height);
     glPushMatrix();
-    glTranslatef(0.03, 0, 0);
+    glTranslatef(-0.03, 0, 0);
 }
 
 
